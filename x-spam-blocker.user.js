@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         X 中文垃圾号识别 / 一键屏蔽 (同城上门·寻固炮类)
 // @namespace    https://github.com/vahnxu/x-spam-blocker
-// @version      0.1.0
+// @version      0.2.0
 // @description  本地实时识别 X 上的中文色情/引流垃圾号（同城上门、寻固炮、点击主页、t.me 引流等），标红并支持一键/自动屏蔽。不用 AI，浏览器本地跑，像广告拦截器一样轻。
 // @author       vahnxu
 // @match        https://x.com/*
@@ -201,8 +201,10 @@
   }
 
   function processCell(cell) {
+    if (cell.dataset && cell.dataset.xspamSeen) return;
     const { name, handle, text } = extract(cell);
-    if (!handle) return;
+    if (!handle) return;                       // 内容可能还没渲染完，下次扫描再重试
+    if (cell.dataset) cell.dataset.xspamSeen = '1';
     const key = handle.toLowerCase();
     if (processed.has(key)) return;
 
@@ -223,11 +225,12 @@
     }
   }
 
+  const CELL_SEL = 'article[data-testid="tweet"], [data-testid="UserCell"], [data-testid="cellInnerDiv"]';
   function scan(root) {
-    const cells = (root || document).querySelectorAll(
-      'article[data-testid="tweet"], [data-testid="UserCell"], [data-testid="cellInnerDiv"]'
-    );
-    cells.forEach(processCell);
+    const r = root || document;
+    // 节点本身就是 cell 的情况（querySelectorAll 只找后代，会漏掉自身）
+    if (r.nodeType === 1 && r.matches && r.matches(CELL_SEL)) processCell(r);
+    if (r.querySelectorAll) r.querySelectorAll(CELL_SEL).forEach(processCell);
   }
 
   // —— 浮动计数面板 ——
@@ -255,6 +258,7 @@
       }
     });
     mo.observe(document.body, { childList: true, subtree: true });
+    setInterval(() => scan(document), 1500);   // 兜底周期扫描：防 SPA 异步渲染 / observer 漏网
     console.log('[x-spam] 已启动，模式=' + MODE + '，阈值=' + THRESHOLD);
   }
 
