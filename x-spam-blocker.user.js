@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         X 中文垃圾号识别 / 一键屏蔽 (同城上门·寻固炮类)
+// @name         X 中文垃圾号识别 / 一键屏蔽 (形态+行为+语义)
 // @namespace    https://github.com/vahnxu/x-spam-blocker
-// @version      0.3.0
-// @description  本地实时识别 X 上的中文色情/引流垃圾号（同城上门、寻固炮、点击主页、t.me 引流等），标红并支持一键/自动屏蔽。不用 AI，浏览器本地跑，像广告拦截器一样轻。
+// @version      0.4.0
+// @description  本地实时识别 X 上的中文色情/引流/搭讪垃圾号。不靠敏感词黑名单（那是军备竞赛），改为综合判据：自动生成 handle 形态 + 随机 emoji 沙拉 + 孤独搭讪语义 + 引流链接。浏览器本地跑，像广告拦截器一样轻。
 // @author       vahnxu
 // @match        https://x.com/*
 // @match        https://twitter.com/*
@@ -17,144 +17,160 @@
   // ① 配置区（普通用户只需要改这里）
   // ============================================================
 
-  // 模式：
-  //   'mark' = 只标红 + 给一个「屏蔽」按钮，你点了才屏蔽（默认，最安全，先观察准不准）
-  //   'auto' = 自动屏蔽命中的号（看顺眼了再改成这个）
+  // 模式：'mark' = 只标红 + 「屏蔽」按钮，你点了才屏蔽（默认，最安全）
+  //       'auto' = 自动屏蔽命中的号（看顺眼了再改）
   const MODE = 'mark';
 
-  // 命中分数达到这个阈值才算垃圾号（越高越保守、越不容易误伤）
-  const THRESHOLD = 3;
+  // 命中总分达到这个阈值才算垃圾号（调高更保守、更不易误伤）
+  const THRESHOLD = 5;
 
-  // 自动模式下，两次屏蔽之间的随机间隔（毫秒），避免操作太快被 X 风控
-  const AUTO_BLOCK_MIN_GAP = 1500;
+  const AUTO_BLOCK_MIN_GAP = 1500;   // 自动模式两次屏蔽最小间隔(ms)
   const AUTO_BLOCK_MAX_GAP = 3500;
-  // 自动模式下，单次会话最多自动屏蔽多少个（防止误判时大规模误伤）
   const AUTO_BLOCK_SESSION_CAP = 200;
 
-  // —— 强特征关键词（出现在「名字」或「正文」里，命中一个 +3，基本一击必杀）——
-  const STRONG_KEYWORDS = [
-    '同城上门', '上门服务', '寻固炮', '约炮', '约啪', '点击主页', '点我主页',
-    '想找我的宝宝', '日泡平台', '真人认证', '秒约', '可约', '空降', '外围',
-    '楼凤', '裸聊', '福利姬', '涩涩', '骚货', '加我微信', '加V看', '一对一裸',
-    '线下真实', '资源群', '上门约', '同城约',
-  ];
+  // —— 评分权重 —— (见下方 score() 注释)
+  const W = {
+    handleShape: 3,   // 用户名 = 英文名+一串数字（自动生成号的特征，最硬）
+    emojiSalad: 3,    // 随机 emoji 沙拉（多行纯 emoji，或 emoji 很多）—— 绕过去重的行为指纹
+    emojiFew: 1,      // 少量 emoji（3~4 个）
+    explicit: 4,      // 露骨引流词（命中即基本坐实）
+    nameSoft: 2,      // 名字里的软色情/搭讪 token
+    bait: 2,          // 孤独/搭讪语义短语
+    link: 3,          // 引流链接 / 短域名
+    nameEmoji: 1,     // 名字里带装饰 emoji
+  };
 
-  // —— 弱特征关键词（出现一个 +1，需要凑够分数才算）——
-  const WEAK_KEYWORDS = [
-    '同城', '上门', '主页', '安全靠谱', '隐私保护', '浮力', '加微', '加V',
-    '看主页', '私聊', '小号', '禁言', '飞机', '电报',
-  ];
+  // 露骨词（出现在名字或正文，命中 +explicit）
+  const EXPLICIT = ['同城上门','上门服务','寻固炮','点击主页','点我主页','日泡平台','真人认证','秒约','可约','空降','外围','楼凤','裸聊','福利姬','涩涩','约炮','约啪','上门约','同城约','加我微信','资源群','线下真实','一对一裸'];
+  // 名字软 token（搭讪/暗示，+nameSoft）
+  const NAME_SOFT = ['涩','馋','约见','真实约见','身子','线上','指挥','寻欢','哥哥我要','调教','喂养','榨','骚'];
+  // 孤独/搭讪语义短语（不是露骨词，关键词抓不全，这里只列高区分度的，+bait）
+  const BAIT = ['想找你','想找人','找人聊','你在吗','谁救我','求靠谱','靠谱朋友','陪我','处对象','两个人更好','把孤独','一起把孤独','约吗','撩我','想脱单','找个人疼','找对象'];
+  // 引流链接（+link）
+  const LINK_PATTERNS = [/t\.me\//i, /\b[a-z0-9]{2,12}\.(top|xyz|vip|cyou|icu|club|live|cc|shop|fun|link|life)\b/i];
 
-  // —— 可疑链接（命中 +2）——
-  const LINK_PATTERNS = [
-    /t\.me\//i,                                   // 电报引流
-    /\b[a-z0-9]{2,10}\.(top|xyz|vip|cyou|icu|club|live|cc|shop|fun)\b/i, // 短引流域名
-  ];
-
-  // —— 用户名「英文名/词 + 一长串数字」（命中 +1，单独不足以屏蔽）——
-  const HANDLE_DIGITS_RE = /^[A-Za-z][A-Za-z._]*\d{6,}$/;
-
-  // —— 装饰性 emoji，垃圾号爱用（命中 +1）——
-  const DECOR_EMOJI_RE = /[🌸✈️💕❤️🔥👇👉🍑💋🌹🉑️🆔]/u;
+  // 用户名形态：字母开头 + 至少 2 个字母 + 结尾一串数字(>=4)。如 NatalieCom28302 / evelyn_vau7909 / Loralee4839
+  const HANDLE_SHAPE = /^[A-Za-z][A-Za-z._]{1,}\d{4,}$/;
+  // emoji（Unicode 象形符号）
+  const EMOJI_G = /\p{Extended_Pictographic}/gu;
+  // 名字装饰 emoji（快速判）
+  const NAME_DECOR = /\p{Extended_Pictographic}/u;
 
   // ============================================================
-  // ② 以下是逻辑，普通用户不用动
+  // ② 逻辑（普通用户不用动）
   // ============================================================
 
-  // X 网页客户端公开 bearer token（不是你的密码，是 X 官方 JS 里写死的公共 client token；
-  // 真正的身份验证靠你浏览器里的登录 cookie）
   const BEARER = 'Bearer AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA';
 
-  const processed = new Set();   // 已处理过的 handle，避免重复扫描
-  let blockedCount = 0;
-  let autoBlockedThisSession = 0;
-  const autoQueue = [];
-  let autoBusy = false;
+  const processed = new Set();
+  let blockedCount = 0, autoBlockedThisSession = 0;
+  const autoQueue = []; let autoBusy = false;
 
   function getCookie(name) {
     const m = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
     return m ? decodeURIComponent(m[1]) : '';
   }
 
-  // 调用 X 内部 1.1 接口屏蔽（不需要打开菜单点击，直接走网络请求）
-  async function blockUser(screenName) {
-    const ct0 = getCookie('ct0');
-    if (!ct0) { console.warn('[x-spam] 找不到 ct0 cookie，可能未登录'); return false; }
-    try {
-      const res = await fetch('https://x.com/i/api/1.1/blocks/create.json', {
-        method: 'POST',
-        headers: {
-          'authorization': BEARER,
-          'x-csrf-token': ct0,
-          'x-twitter-active-user': 'yes',
-          'x-twitter-auth-type': 'OAuth2Session',
-          'content-type': 'application/x-www-form-urlencoded',
-        },
-        credentials: 'include',
-        body: 'screen_name=' + encodeURIComponent(screenName) + '&skip_status=1',
-      });
-      if (res.ok) {
-        blockedCount++;
-        updatePanel();
-        return true;
+  // 把元素里的文字 + emoji(从 <img alt> 抠出) + 换行 还原成纯文本。
+  // 关键：X 把 emoji 渲染成 <img alt="🌸">，普通 innerText 读不到 emoji，必须走这里。
+  function richText(el) {
+    if (!el) return '';
+    let out = '';
+    el.childNodes.forEach((n) => {
+      if (n.nodeType === 3) out += n.textContent;
+      else if (n.nodeType === 1) {
+        const tag = n.tagName;
+        if (tag === 'IMG') out += (n.getAttribute('alt') || '');
+        else if (tag === 'BR') out += '\n';
+        else {
+          const disp = (n.ownerDocument.defaultView.getComputedStyle(n).display || '');
+          out += richText(n);
+          if (disp === 'block' || disp === 'flex') out += '\n';
+        }
       }
-      console.warn('[x-spam] 屏蔽失败', screenName, res.status);
-      return false;
-    } catch (e) {
-      console.warn('[x-spam] 屏蔽异常', screenName, e);
-      return false;
-    }
-  }
-
-  function pumpAutoQueue() {
-    if (autoBusy) return;
-    if (autoQueue.length === 0) return;
-    if (autoBlockedThisSession >= AUTO_BLOCK_SESSION_CAP) return;
-    autoBusy = true;
-    const { handle, cell } = autoQueue.shift();
-    blockUser(handle).then((ok) => {
-      if (ok) {
-        autoBlockedThisSession++;
-        markCellBlocked(cell, handle);
-      }
-      const gap = AUTO_BLOCK_MIN_GAP + Math.floor((AUTO_BLOCK_MAX_GAP - AUTO_BLOCK_MIN_GAP) * Math.random());
-      setTimeout(() => { autoBusy = false; pumpAutoQueue(); }, gap);
     });
+    return out;
   }
 
-  // 对一段文本打分
-  function score(name, text) {
-    const hay = (name + ' ' + text);
-    let s = 0;
-    const reasons = [];
-    for (const k of STRONG_KEYWORDS) if (hay.includes(k)) { s += 3; reasons.push('强:' + k); }
-    for (const k of WEAK_KEYWORDS)   if (hay.includes(k)) { s += 1; reasons.push('弱:' + k); }
-    for (const re of LINK_PATTERNS)  if (re.test(hay))     { s += 2; reasons.push('链接'); break; }
-    if (DECOR_EMOJI_RE.test(name))   { s += 1; reasons.push('emoji'); }
-    return { s, reasons };
+  function emojiStats(text) {
+    const emojiCount = (text.match(EMOJI_G) || []).length;
+    const lines = text.split('\n').map((s) => s.trim()).filter(Boolean);
+    let emojiOnlyLines = 0;
+    for (const l of lines) {
+      if (!EMOJI_G.test(l)) { EMOJI_G.lastIndex = 0; continue; }
+      EMOJI_G.lastIndex = 0;
+      const stripped = l.replace(EMOJI_G, '').replace(/[️‍\s]/g, '');
+      if (stripped === '') emojiOnlyLines++;
+    }
+    return { emojiCount, emojiOnlyLines };
   }
 
-  // 从一个 cell 里抽出 显示名 / handle / 正文
+  // 综合评分：形态 + 行为(emoji沙拉) + 语义(软token/bait) + 露骨词 + 链接
+  function score(name, handle, text) {
+    let s = 0; const r = [];
+    const hay = name + ' ' + text;
+
+    if (HANDLE_SHAPE.test(handle)) { s += W.handleShape; r.push('handle形态'); }
+
+    const es = emojiStats(text);
+    if (es.emojiOnlyLines >= 2 || es.emojiCount >= 5) { s += W.emojiSalad; r.push('emoji沙拉(' + es.emojiCount + ')'); }
+    else if (es.emojiCount >= 3) { s += W.emojiFew; r.push('emoji×' + es.emojiCount); }
+
+    for (const k of EXPLICIT) if (hay.includes(k)) { s += W.explicit; r.push('露骨:' + k); break; }
+    for (const k of NAME_SOFT) if (name.includes(k)) { s += W.nameSoft; r.push('软名:' + k); break; }
+    let baitN = 0; for (const k of BAIT) if (hay.includes(k)) { baitN++; if (baitN <= 2) { s += W.bait; r.push('搭讪:' + k); } }
+    for (const re of LINK_PATTERNS) if (re.test(hay)) { s += W.link; r.push('链接'); break; }
+    if (NAME_DECOR.test(name)) { s += W.nameEmoji; r.push('名emoji'); }
+
+    return { s, reasons: r };
+  }
+
   function extract(cell) {
     const nameBlock = cell.querySelector('[data-testid="User-Name"]');
     let name = '', handle = '';
     if (nameBlock) {
-      const txt = nameBlock.innerText || '';
+      const txt = richText(nameBlock);
       const at = txt.match(/@(\w+)/);
       if (at) handle = at[1];
       name = txt.split('@')[0].replace(/\s+/g, ' ').trim();
     }
     if (!handle) {
-      // 退路：找 profile 链接
       const a = cell.querySelector('a[role="link"][href^="/"]');
-      if (a) {
-        const m = a.getAttribute('href').match(/^\/(\w+)$/);
-        if (m) handle = m[1];
-      }
+      if (a) { const m = a.getAttribute('href').match(/^\/(\w+)$/); if (m) handle = m[1]; }
     }
     const textEl = cell.querySelector('[data-testid="tweetText"]');
-    const text = textEl ? (textEl.innerText || '') : (cell.innerText || '');
+    const text = textEl ? richText(textEl) : '';
     return { name, handle, text };
+  }
+
+  async function blockUser(screenName) {
+    const ct0 = getCookie('ct0');
+    if (!ct0) { console.warn('[x-spam] 未登录(无 ct0)'); return false; }
+    try {
+      const res = await fetch('https://x.com/i/api/1.1/blocks/create.json', {
+        method: 'POST',
+        headers: {
+          'authorization': BEARER, 'x-csrf-token': ct0,
+          'x-twitter-active-user': 'yes', 'x-twitter-auth-type': 'OAuth2Session',
+          'content-type': 'application/x-www-form-urlencoded',
+        },
+        credentials: 'include',
+        body: 'screen_name=' + encodeURIComponent(screenName) + '&skip_status=1',
+      });
+      if (res.ok) { blockedCount++; updatePanel(); return true; }
+      console.warn('[x-spam] 屏蔽失败', screenName, res.status); return false;
+    } catch (e) { console.warn('[x-spam] 屏蔽异常', screenName, e); return false; }
+  }
+
+  function pumpAutoQueue() {
+    if (autoBusy || !autoQueue.length || autoBlockedThisSession >= AUTO_BLOCK_SESSION_CAP) return;
+    autoBusy = true;
+    const { handle, cell } = autoQueue.shift();
+    blockUser(handle).then((ok) => {
+      if (ok) { autoBlockedThisSession++; markCellBlocked(cell, handle); }
+      const gap = AUTO_BLOCK_MIN_GAP + Math.floor((AUTO_BLOCK_MAX_GAP - AUTO_BLOCK_MIN_GAP) * Math.random());
+      setTimeout(() => { autoBusy = false; pumpAutoQueue(); }, gap);
+    });
   }
 
   function markCellSpam(cell, handle, reasons) {
@@ -162,33 +178,25 @@
     cell.dataset.xspam = '1';
     cell.style.outline = '2px solid #e0245e';
     cell.style.outlineOffset = '-2px';
+    if (getComputedStyle(cell).position === 'static') cell.style.position = 'relative';
 
     const badge = document.createElement('div');
     badge.textContent = '⚠ 疑似垃圾号';
     badge.style.cssText = 'position:absolute;top:6px;right:8px;z-index:9;background:#e0245e;color:#fff;font-size:11px;padding:2px 6px;border-radius:6px;font-weight:700;';
-
     const btn = document.createElement('button');
-    btn.textContent = '屏蔽';
-    btn.title = '命中: ' + reasons.join(', ');
+    btn.textContent = '屏蔽'; btn.title = '命中: ' + reasons.join(', ');
     btn.style.cssText = 'position:absolute;top:30px;right:8px;z-index:9;background:#e0245e;color:#fff;border:none;font-size:12px;padding:4px 10px;border-radius:14px;cursor:pointer;font-weight:700;';
     btn.addEventListener('click', async (ev) => {
       ev.preventDefault(); ev.stopPropagation();
       btn.textContent = '屏蔽中…'; btn.disabled = true;
       const ok = await blockUser(handle);
-      if (ok) markCellBlocked(cell, handle);
-      else { btn.textContent = '失败'; }
+      if (ok) markCellBlocked(cell, handle); else btn.textContent = '失败';
     });
-
-    if (getComputedStyle(cell).position === 'static') cell.style.position = 'relative';
-    cell.appendChild(badge);
-    cell.appendChild(btn);
+    cell.appendChild(badge); cell.appendChild(btn);
   }
 
   function markCellBlocked(cell, handle) {
     cell.style.opacity = '0.35';
-    const old = cell.querySelector('button[data-xspam-btn]');
-    cell.querySelectorAll('div,button').forEach(() => {});
-    // 简单覆盖一个“已屏蔽”标记
     let tag = cell.querySelector('.xspam-blocked-tag');
     if (!tag) {
       tag = document.createElement('div');
@@ -203,42 +211,28 @@
   function processCell(cell) {
     if (cell.dataset && cell.dataset.xspamSeen) return;
     const { name, handle, text } = extract(cell);
-    if (!handle) return;                       // 内容可能还没渲染完，下次扫描再重试
+    if (!handle) return;                       // 内容还没渲染完，下次扫描再重试
     if (cell.dataset) cell.dataset.xspamSeen = '1';
     const key = handle.toLowerCase();
     if (processed.has(key)) return;
 
-    const { s, reasons } = score(name, text);
-    // 加上 handle 形态特征
-    let total = s;
-    if (HANDLE_DIGITS_RE.test(handle)) { total += 1; reasons.push('handle数字'); }
-
-    if (total < THRESHOLD) return;     // 不够分，放过（保护误伤）
+    const { s, reasons } = score(name, handle, text);
+    if (s < THRESHOLD) return;
     processed.add(key);
 
-    if (MODE === 'auto') {
-      markCellSpam(cell, handle, reasons);
-      autoQueue.push({ handle, cell });
-      pumpAutoQueue();
-    } else {
-      markCellSpam(cell, handle, reasons);
-    }
+    markCellSpam(cell, handle, reasons);
+    if (MODE === 'auto') { autoQueue.push({ handle, cell }); pumpAutoQueue(); }
   }
 
   const CELL_SEL = 'article[data-testid="tweet"], [data-testid="UserCell"], [data-testid="cellInnerDiv"]';
   function scan(root) {
     const r = root || document;
-    // 节点本身就是 cell 的情况（querySelectorAll 只找后代，会漏掉自身）
     if (r.nodeType === 1 && r.matches && r.matches(CELL_SEL)) processCell(r);
     if (r.querySelectorAll) r.querySelectorAll(CELL_SEL).forEach(processCell);
   }
 
-  // —— 浮动计数面板 ——
   let panel;
-  function updatePanel() {
-    if (!panel) return;
-    panel.querySelector('.xspam-count').textContent = blockedCount;
-  }
+  function updatePanel() { if (panel) panel.querySelector('.xspam-count').textContent = blockedCount; }
   function buildPanel() {
     panel = document.createElement('div');
     panel.style.cssText = 'position:fixed;bottom:16px;right:16px;z-index:99999;background:#000;color:#fff;border:1px solid #2f3336;border-radius:12px;padding:8px 12px;font-size:12px;font-family:system-ui;box-shadow:0 2px 12px rgba(0,0,0,.4);';
@@ -246,22 +240,15 @@
     document.body.appendChild(panel);
   }
 
-  // —— 启动 ——
   function start() {
     buildPanel();
     scan(document);
-    // 事件驱动 + 去抖：只在页面真的有 DOM 变化时扫，并把一连串变化合并成一次扫描。
-    // 闲置时一次都不跑；活跃滚动时最多每 ~300ms 一次。已扫过的卡片有 xspamSeen 标记会跳过，
-    // 所以全页 scan 也很便宜。纯本地 DOM 读取，不发网络请求，与 X 反爬虫无关。
+    // 事件驱动 + 去抖：只在 DOM 真的变化时扫，并把一连串变化合并成一次。
+    // 闲置时一次都不跑；已扫卡片有 xspamSeen 标记会跳过。纯本地 DOM 读取，不发网络，与反爬虫无关。
     let pending = false;
-    const schedule = () => {
-      if (pending) return;
-      pending = true;
-      setTimeout(() => { pending = false; scan(document); }, 300);
-    };
-    const mo = new MutationObserver(schedule);
-    mo.observe(document.body, { childList: true, subtree: true });
-    console.log('[x-spam] 已启动（事件驱动+去抖），模式=' + MODE + '，阈值=' + THRESHOLD);
+    const schedule = () => { if (pending) return; pending = true; setTimeout(() => { pending = false; scan(document); }, 300); };
+    new MutationObserver(schedule).observe(document.body, { childList: true, subtree: true });
+    console.log('[x-spam] v0.4 已启动（形态+行为+语义，事件驱动），阈值=' + THRESHOLD + '，模式=' + MODE);
   }
 
   if (document.body) start();
