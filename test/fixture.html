@@ -21,7 +21,7 @@ article{display:block;border-bottom:1px solid #eee;padding:12px 16px}
 // ==UserScript==
 // @name         X 中文垃圾号识别 / 一键屏蔽 (同城上门·寻固炮类)
 // @namespace    https://github.com/vahnxu/x-spam-blocker
-// @version      0.2.0
+// @version      0.3.0
 // @description  本地实时识别 X 上的中文色情/引流垃圾号（同城上门、寻固炮、点击主页、t.me 引流等），标红并支持一键/自动屏蔽。不用 AI，浏览器本地跑，像广告拦截器一样轻。
 // @author       vahnxu
 // @match        https://x.com/*
@@ -270,16 +270,18 @@ article{display:block;border-bottom:1px solid #eee;padding:12px 16px}
   function start() {
     buildPanel();
     scan(document);
-    const mo = new MutationObserver((muts) => {
-      for (const m of muts) {
-        for (const n of m.addedNodes) {
-          if (n.nodeType === 1) scan(n);
-        }
-      }
-    });
+    // 事件驱动 + 去抖：只在页面真的有 DOM 变化时扫，并把一连串变化合并成一次扫描。
+    // 闲置时一次都不跑；活跃滚动时最多每 ~300ms 一次。已扫过的卡片有 xspamSeen 标记会跳过，
+    // 所以全页 scan 也很便宜。纯本地 DOM 读取，不发网络请求，与 X 反爬虫无关。
+    let pending = false;
+    const schedule = () => {
+      if (pending) return;
+      pending = true;
+      setTimeout(() => { pending = false; scan(document); }, 300);
+    };
+    const mo = new MutationObserver(schedule);
     mo.observe(document.body, { childList: true, subtree: true });
-    setInterval(() => scan(document), 1500);   // 兜底周期扫描：防 SPA 异步渲染 / observer 漏网
-    console.log('[x-spam] 已启动，模式=' + MODE + '，阈值=' + THRESHOLD);
+    console.log('[x-spam] 已启动（事件驱动+去抖），模式=' + MODE + '，阈值=' + THRESHOLD);
   }
 
   if (document.body) start();
