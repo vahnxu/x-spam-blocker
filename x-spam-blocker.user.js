@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         X 中文垃圾号识别 / 一键屏蔽 (形态+行为+语义)
 // @namespace    https://github.com/vahnxu/x-spam-blocker
-// @version      0.4.0
+// @version      0.5.0
 // @description  本地实时识别 X 上的中文色情/引流/搭讪垃圾号。不靠敏感词黑名单（那是军备竞赛），改为综合判据：自动生成 handle 形态 + 随机 emoji 沙拉 + 孤独搭讪语义 + 引流链接。浏览器本地跑，像广告拦截器一样轻。
 // @author       vahnxu
 // @match        https://x.com/*
@@ -240,13 +240,72 @@
     document.body.appendChild(panel);
   }
 
+  // ===== 采集器：把"已屏蔽账号"列表抓成 JSON（真实正样本数据源）=====
+  function onBlockedPage() { return /\/settings\/(blocked|blocked_all)/.test(location.pathname); }
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  function extractUserCell(cell) {
+    const nameBlock = cell.querySelector('[data-testid="User-Name"]');
+    let name = '', handle = '';
+    if (nameBlock) {
+      const txt = richText(nameBlock);
+      const at = txt.match(/@(\w+)/); if (at) handle = at[1];
+      name = txt.split('@')[0].replace(/\s+/g, ' ').trim();
+    }
+    // bio：cell 文本里去掉 名字/handle 行 与 按钮文案
+    const lines = richText(cell).split('\n').map((s) => s.trim()).filter(Boolean);
+    const bio = lines.filter((l) =>
+      l !== name && !l.startsWith('@') &&
+      !/^(Block(ed)?|Following|Follow|Unblock|拉黑|已?屏蔽|正在关注|关注|取消屏蔽)$/.test(l)
+    ).join(' ');
+    return { handle, name, bio };
+  }
+
+  function downloadJSON(filename, obj) {
+    const blob = new Blob([JSON.stringify(obj, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename; document.body.appendChild(a); a.click();
+    setTimeout(() => { a.remove(); URL.revokeObjectURL(url); }, 1000);
+  }
+
+  async function harvestBlocked(btn) {
+    const seen = new Map();
+    let stagnant = 0;
+    while (stagnant < 8) {
+      document.querySelectorAll('[data-testid="UserCell"]').forEach((cell) => {
+        const u = extractUserCell(cell);
+        if (u.handle && !seen.has(u.handle)) seen.set(u.handle, u);
+      });
+      btn.textContent = '采集中… ' + seen.size;
+      const before = seen.size;
+      window.scrollTo(0, document.documentElement.scrollHeight);
+      await sleep(900);
+      if (seen.size === before) stagnant++; else stagnant = 0;   // 连续 8 次没新增 = 到底
+    }
+    const data = [...seen.values()];
+    downloadJSON('x-blocklist.json', data);
+    btn.textContent = '✓ 采集完成 ' + data.length + ' 个（已下载 x-blocklist.json）';
+  }
+
+  function ensureCollector() {
+    if (!onBlockedPage() || document.getElementById('xspam-collector')) return;
+    const b = document.createElement('button');
+    b.id = 'xspam-collector';
+    b.textContent = '📥 采集已屏蔽账号 → JSON';
+    b.style.cssText = 'position:fixed;top:70px;right:16px;z-index:99999;background:#1d9bf0;color:#fff;border:none;font-size:13px;padding:8px 14px;border-radius:18px;cursor:pointer;font-weight:700;box-shadow:0 2px 12px rgba(0,0,0,.3);';
+    b.addEventListener('click', () => { b.disabled = true; harvestBlocked(b); });
+    document.body.appendChild(b);
+  }
+
   function start() {
     buildPanel();
+    ensureCollector();
     scan(document);
     // 事件驱动 + 去抖：只在 DOM 真的变化时扫，并把一连串变化合并成一次。
     // 闲置时一次都不跑；已扫卡片有 xspamSeen 标记会跳过。纯本地 DOM 读取，不发网络，与反爬虫无关。
     let pending = false;
-    const schedule = () => { if (pending) return; pending = true; setTimeout(() => { pending = false; scan(document); }, 300); };
+    const schedule = () => { if (pending) return; pending = true; setTimeout(() => { pending = false; scan(document); ensureCollector(); }, 300); };
     new MutationObserver(schedule).observe(document.body, { childList: true, subtree: true });
     console.log('[x-spam] v0.4 已启动（形态+行为+语义，事件驱动），阈值=' + THRESHOLD + '，模式=' + MODE);
   }
