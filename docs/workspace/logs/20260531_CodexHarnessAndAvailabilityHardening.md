@@ -27,6 +27,23 @@
 - `README.md`
   - Documented the regression harness, what intent it verifies, and current availability hardening points.
 
+## 2026-05-31 live-X follow-up
+
+- `x-spam-blocker.user.js`
+  - Bumped userscript version through `0.6.3`.
+  - Added city-matrix and contact-cue scoring for Chinese batch spam that does not use auto-generated handles.
+  - Expanded city coverage with live X samples from second/lower-tier city burst posts.
+  - Skipped nested candidate cells when an outer tweet/user cell is already the scoring surface, preventing duplicate badge/button overlays.
+- `test/run-regression.js`
+  - Added regressions for:
+    - city-burst + `点击即可联系` spam with a non-auto-looking handle;
+    - lower-tier city-burst spam with obfuscated escort wording;
+    - X `article` / `cellInnerDiv` nesting where only one visible marker should be injected.
+- `package.json`
+  - Bumped package version to `0.6.3`.
+- `README.md`
+  - Added the new city-matrix/contact-cue and nested-card hardening points.
+
 ## Commands and key outputs
 
 - `git status --short --branch` in the generated Codex cwd:
@@ -37,6 +54,18 @@
   - Failed as intended: stale fixture, startup version mismatch, duplicate visible card not marked, delayed tweet text not re-evaluated.
 - `npm test` after implementation:
   - `6/6 tests passed`.
+- `npm test` after live-X follow-up:
+  - `9/9 tests passed`.
+- `node --check x-spam-blocker.user.js`:
+  - PASS, no syntax errors.
+- `git diff --check`:
+  - PASS, no whitespace errors.
+- Real Chrome / X validation:
+  - First attempt accidentally hit `Chrome-Debug` (`--user-data-dir=.../Chrome-Debug`) and X login onboarding; treated as failed validation, no login attempted.
+  - Corrected to the user's normal Chrome `Default` profile through the Codex Chrome Extension.
+  - Tampermonkey script storage readback showed `sourceVersion=0.6.3` and `metaVersion=0.6.3`.
+  - Live X search for `约炮`: `v0.6.3` startup logs present, panel present, 5 visible articles, 4 marked nodes, duplicate badge articles = 0.
+  - Screenshot evidence: `/Users/haitaoxu/Documents/Codex/2026-05-31/repo-harness-claude-code-x/outputs/x-real-chrome-v063-final.png`.
 
 ## Validation checkpoints
 
@@ -45,11 +74,13 @@
 - PASS: X SPA delayed rendering boundary is covered by a regression test.
 - PASS: Duplicate visible spam-card boundary is covered by a regression test.
 - PASS: Blocked-list collector injection is covered by a regression test.
+- PASS: City-matrix/contact-cue spam without auto-generated handle shape is covered by regression tests.
+- PASS: X nested card DOM does not create duplicate visible markers.
+- PASS: Real logged-in normal Chrome profile shows `v0.6.3` running on X with visible red marker and manual block button.
 
 ## Not verified
 
-- Not verified in the user's logged-in daily Chrome or real X account. The prior session established that this agent cannot directly operate the user's normal logged-in Chrome/Tampermonkey surface from this environment.
-- Not verified against a fresh live X DOM snapshot. The harness uses local DOM fixtures and fake DOM behavior focused on the script's intended selectors and state transitions.
+- Automatic blocking mode remains intentionally not exercised against the live account; live verification used safe `mark` mode only.
 - Not published publicly yet. GitHub public visibility, GreasyFork/OpenUserJS release, and X announcement remain separate release steps.
 
 ## Rollback
