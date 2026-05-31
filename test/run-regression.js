@@ -59,6 +59,10 @@ class FakeElement {
     this.parentNode = null;
   }
 
+  get parentElement() {
+    return this.parentNode && this.parentNode.nodeType === 1 ? this.parentNode : null;
+  }
+
   setAttribute(name, value) {
     this.attributes[name] = String(value);
     if (name === 'id') this.id = String(value);
@@ -315,6 +319,34 @@ test('marks Chinese spam samples while leaving normal short replies unmarked', (
   assert.equal(isMarked(human), false);
 });
 
+test('marks city-burst contact spam even when the handle does not look auto-generated', () => {
+  const doc = new FakeDocument('/home');
+  const spam = makeTweetCell(doc, {
+    name: 'Vivekanand Pandey',
+    handle: 'vivekananddssw',
+    text: '绍兴南通常州贵阳上门南宁石家庄哈尔滨长春厦门大连沈阳合肥济南福州约炮无锡青岛宁波东莞佛山郑州西安同城苏州天津武汉重庆成都南京线下广州深圳潍坊太原温州外围长沙南昌学生徐州烟台北京\nList · 1 Member\n点击即可联系',
+  });
+  doc.body.appendChild(spam);
+
+  runUserscript(doc);
+
+  assert.equal(isMarked(spam), true);
+});
+
+test('marks lower-tier city-burst spam with obfuscated escort wording', () => {
+  const doc = new FakeDocument('/home');
+  const spam = makeTweetCell(doc, {
+    name: '静静中山东区西区南区石岐街道畻美二',
+    handle: 'us100_szn',
+    text: '围炮约下妇线兼同少生外学职城\n徐州扬州洛阳保定潍坊海口金华兰州乌鲁木齐临沂湖州盐城唐山济宁廊坊泰州赣州呼和浩特镇江芜湖汕头邯郸江门淄博银川南阳淮安绵阳连云港阜阳新乡咸阳三亚威海桂林漳州遵义宜昌宿迁沧州衡阳柳州襄阳莆田\nList · 0 Members\n同城约啪',
+  });
+  doc.body.appendChild(spam);
+
+  runUserscript(doc);
+
+  assert.equal(isMarked(spam), true);
+});
+
 test('marks every visible duplicate occurrence of the same spam handle', () => {
   const doc = new FakeDocument('/home');
   const first = makeTweetCell(doc, {
@@ -334,6 +366,26 @@ test('marks every visible duplicate occurrence of the same spam handle', () => {
 
   assert.equal(isMarked(first), true);
   assert.equal(isMarked(second), true);
+});
+
+test('marks only the outer tweet cell when X nests cellInnerDiv inside article', () => {
+  const doc = new FakeDocument('/home');
+  const article = doc.createElement('article');
+  article.setAttribute('data-testid', 'tweet');
+  const inner = makeTweetCell(doc, {
+    name: 'Paola Fajardo',
+    handle: 'paola_faja32679',
+    text: '大连保定湖州盐城同城泰州温州哈尔滨济宁阜阳临沂廊坊福州南昌潍坊外围沧州绍兴南阳赣州学生海口新乡约炮\n专注中高端质量',
+  });
+  inner.tagName = 'DIV';
+  inner.setAttribute('data-testid', 'cellInnerDiv');
+  article.appendChild(inner);
+  doc.body.appendChild(article);
+
+  runUserscript(doc);
+
+  assert.equal(isMarked(article), true);
+  assert.equal(isMarked(inner), false);
 });
 
 test('re-evaluates a cell when X fills tweet text after the handle renders', () => {
