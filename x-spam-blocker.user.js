@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         X 中文垃圾号识别 / 一键屏蔽 (形态+行为+语义)
 // @namespace    https://github.com/vahnxu/x-spam-blocker
-// @version      0.6.3
+// @version      0.6.4
 // @description  本地实时识别 X 上的中文色情/引流/搭讪垃圾号。不靠敏感词黑名单（那是军备竞赛），改为综合判据：自动生成 handle 形态 + 随机 emoji 沙拉 + 孤独搭讪语义 + 引流链接。浏览器本地跑，像广告拦截器一样轻。
 // @author       vahnxu
 // @match        https://x.com/*
@@ -19,7 +19,7 @@
 
   // 模式：'mark' = 只标红 + 「屏蔽」按钮，你点了才屏蔽（默认，最安全）
   //       'auto' = 自动屏蔽命中的号（看顺眼了再改）
-  const VERSION = '0.6.3';
+  const VERSION = '0.6.4';
   const MODE = 'mark';
 
   // 命中总分达到这个阈值才算垃圾号（调高更保守、更不易误伤）
@@ -41,6 +41,7 @@
     link: 3,          // 引流链接 / 短域名
     cityBurst: 2,     // 城市名批量堆叠（全国同城引流文案）
     contactCue: 2,    // 点击联系/预约/QQ/TG 等转化提示
+    mentionReferral: 5, // 短评 @ 导流：主页/探路/太涩/能打等组合话术
     nameEmoji: 1,     // 名字里带装饰 emoji
   };
 
@@ -55,6 +56,8 @@
   // 全国城市名堆叠：中文批量垃圾号常用"城市矩阵 + 同城/上门"铺词，普通真人短回复很少这样写。
   const CITY_TERMS = ['北京','上海','广州','深圳','天津','重庆','成都','杭州','南京','苏州','武汉','西安','郑州','长沙','合肥','济南','青岛','宁波','东莞','佛山','无锡','常州','南通','绍兴','贵阳','南宁','石家庄','哈尔滨','长春','厦门','大连','沈阳','福州','太原','温州','南昌','徐州','烟台','潍坊','扬州','洛阳','保定','海口','金华','兰州','乌鲁木齐','临沂','湖州','盐城','唐山','济宁','廊坊','泰州','赣州','呼和浩特','镇江','芜湖','汕头','邯郸','江门','淄博','银川','南阳','淮安','绵阳','连云港','阜阳','新乡','咸阳','三亚','威海','桂林','漳州','遵义','宜昌','宿迁','沧州','衡阳','柳州','襄阳','莆田'];
   const CONTACT_CUES = ['点击即可联系','点击联系','主页联系','私信联系','预约','服务复制','加薇','佳薇','QQ裙','qq群','TG：','TG:', '电报', '大圈品质','附近喝茶','商务接待','学生兼职','同城资源','空姐模特'];
+  const REFERRAL_CUES = ['太涩','太色','顶不住','主页能打','她主页','她的主页','能打✈','打✈','打飞机','已探路','探路','花样多','体制内老师','专业牵线','牵线','1-5线覆盖','看主页'];
+  const MENTION_CODE = /@\w+\s+[A-Za-z0-9]{1,3}\b/;
 
   // 用户名形态：字母开头 + 至少 2 个字母 + 结尾一串数字(>=4)。如 NatalieCom28302 / evelyn_vau7909 / Loralee4839
   const HANDLE_SHAPE = /^[A-Za-z][A-Za-z._]{1,}\d{4,}$/;
@@ -125,6 +128,15 @@
     return n;
   }
 
+  function isMentionReferral(text) {
+    const compact = text.replace(/\s+/g, '');
+    if (!/@\w+/.test(text)) return false;
+    const cueHits = countTermHits(compact, REFERRAL_CUES);
+    if (cueHits >= 2) return true;
+    if (cueHits >= 1 && MENTION_CODE.test(text)) return true;
+    return false;
+  }
+
   function cellSignature(name, handle, text) {
     return handle.toLowerCase() + ':' + hashText(name + '\n' + text);
   }
@@ -147,6 +159,7 @@
     const cityHits = countTermHits(hay, CITY_TERMS);
     if (cityHits >= 8) { s += W.cityBurst; r.push('城市串(' + cityHits + ')'); }
     for (const k of CONTACT_CUES) if (hay.includes(k)) { s += W.contactCue; r.push('联系:' + k); break; }
+    if (isMentionReferral(text)) { s += W.mentionReferral; r.push('短评@引流'); }
     if (NAME_DECOR.test(name)) { s += W.nameEmoji; r.push('名emoji'); }
 
     return { s, reasons: r };
