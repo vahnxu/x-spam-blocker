@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         X 中文垃圾号识别 / 一键屏蔽 (形态+行为+语义)
 // @namespace    https://github.com/vahnxu/x-spam-blocker
-// @version      0.6.5
+// @version      0.6.6
 // @description  本地实时识别 X 上的中文色情/引流/搭讪垃圾号。不靠敏感词黑名单（那是军备竞赛），改为综合判据：自动生成 handle 形态 + 随机 emoji 沙拉 + 孤独搭讪语义 + 引流链接。浏览器本地跑，像广告拦截器一样轻。
 // @author       vahnxu
 // @match        https://x.com/*
@@ -19,15 +19,16 @@
 
   // 模式：'mark' = 只标红 + 「屏蔽」按钮，你点了才屏蔽（默认，最安全）
   //       'auto' = 自动屏蔽命中的号（看顺眼了再改）
-  const VERSION = '0.6.5';
+  const VERSION = '0.6.6';
   const MODE = 'mark';
 
   // 命中总分达到这个阈值才算垃圾号（调高更保守、更不易误伤）
   const THRESHOLD = 5;
 
-  const AUTO_BLOCK_MIN_GAP = 1500;   // 自动模式两次屏蔽最小间隔(ms)
-  const AUTO_BLOCK_MAX_GAP = 3500;
-  const AUTO_BLOCK_SESSION_CAP = 200;
+  const AUTO_BLOCK_MIN_GAP = 6000;   // 自动模式两次屏蔽最小间隔(ms)，保守慢速，降低账号风控风险
+  const AUTO_BLOCK_MAX_GAP = 12000;
+  const AUTO_BLOCK_SESSION_CAP = 60;
+  const BATCH_BLOCK_CLICK_CAP = 25;   // 每次批量点击最多入队数量，剩下的等下一轮用户确认
   const MAX_TRACKED_HANDLES = 500;    // 只保留最近可见垃圾号的 DOM 引用，避免长时间浏览内存膨胀
 
   // —— 评分权重 —— (见下方 score() 注释)
@@ -56,7 +57,7 @@
   // 全国城市名堆叠：中文批量垃圾号常用"城市矩阵 + 同城/上门"铺词，普通真人短回复很少这样写。
   const CITY_TERMS = ['北京','上海','广州','深圳','天津','重庆','成都','杭州','南京','苏州','武汉','西安','郑州','长沙','合肥','济南','青岛','宁波','东莞','佛山','无锡','常州','南通','绍兴','贵阳','南宁','石家庄','哈尔滨','长春','厦门','大连','沈阳','福州','太原','温州','南昌','徐州','烟台','潍坊','扬州','洛阳','保定','海口','金华','兰州','乌鲁木齐','临沂','湖州','盐城','唐山','济宁','廊坊','泰州','赣州','呼和浩特','镇江','芜湖','汕头','邯郸','江门','淄博','银川','南阳','淮安','绵阳','连云港','阜阳','新乡','咸阳','三亚','威海','桂林','漳州','遵义','宜昌','宿迁','沧州','衡阳','柳州','襄阳','莆田'];
   const CONTACT_CUES = ['点击即可联系','点击联系','主页联系','私信联系','预约','服务复制','加薇','佳薇','QQ裙','qq群','TG：','TG:', '电报', '大圈品质','附近喝茶','商务接待','学生兼职','同城资源','空姐模特'];
-  const REFERRAL_CUES = ['太涩','太色','顶不住','主页能打','她主页','她的主页','能打✈','打✈','打飞机','已探路','探路','花样多','体制内老师','专业牵线','牵线','1-5线覆盖','看主页'];
+  const REFERRAL_CUES = ['太涩','太色','顶不住','主页能打','她主页','她的主页','能打✈','打✈','打飞机','已探路','探路','花样多','体制内老师','专业牵线','牵线','1-5线覆盖','看主页','sao货','sao貨','线下sao','线下骚','没人比她sao','没人比她骚','沒人比她sao','没有人比她sao'];
   const MENTION_CODE = /@\w+\s+[A-Za-z0-9]{1,3}\b/;
 
   // 用户名形态：字母开头 + 至少 2 个字母 + 结尾一串数字(>=4)。如 NatalieCom28302 / evelyn_vau7909 / Loralee4839
@@ -133,7 +134,7 @@
   }
 
   function isMentionReferral(text) {
-    const compact = text.replace(/\s+/g, '');
+    const compact = text.replace(/\s+/g, '').toLowerCase();
     if (!/@\w+/.test(text)) return false;
     const cueHits = countTermHits(compact, REFERRAL_CUES);
     if (cueHits >= 2) return true;
@@ -319,11 +320,15 @@
   function blockMarkedVisible(btn) {
     const handles = visibleFlaggedHandles();
     if (!handles.length) { updatePanel(); return; }
+    const selected = handles.slice(0, BATCH_BLOCK_CLICK_CAP);
+    const suffix = handles.length > selected.length ? '（本次最多先处理 ' + selected.length + ' 个，剩余可稍后再点）' : '';
+    const ok = typeof window.confirm !== 'function' || window.confirm('将慢速屏蔽当前页已标记的 ' + selected.length + ' 个疑似垃圾账号' + suffix + '。继续吗？');
+    if (!ok) return;
     let queued = 0;
-    handles.forEach(({ handle, cell }) => { if (enqueueBlock(handle, cell)) queued++; });
+    selected.forEach(({ handle, cell }) => { if (enqueueBlock(handle, cell)) queued++; });
     if (btn) {
       btn.disabled = true;
-      btn.textContent = '已加入队列 ' + queued + ' 个';
+      btn.textContent = '已加入慢速队列 ' + queued + ' 个';
     }
     updatePanel();
     pumpAutoQueue();
@@ -366,7 +371,7 @@
     const batchBtn = document.createElement('button');
     batchBtn.id = 'xspam-block-marked';
     batchBtn.textContent = '屏蔽本页疑似(0)';
-    batchBtn.title = '只屏蔽当前页面已经被标记为疑似垃圾的账号；不处理未命中的普通账号。';
+    batchBtn.title = '只屏蔽当前页面已经被标记为疑似垃圾的账号；每次最多 25 个，慢速执行，不处理未命中的普通账号。';
     batchBtn.style.cssText = 'display:block;margin-top:6px;background:#e0245e;color:#fff;border:none;font-size:12px;padding:4px 10px;border-radius:14px;cursor:pointer;font-weight:700;';
     batchBtn.addEventListener('click', (ev) => {
       ev.preventDefault(); ev.stopPropagation();
