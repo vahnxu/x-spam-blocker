@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         X 中文垃圾号识别 / 一键屏蔽 (形态+行为+语义)
 // @namespace    https://github.com/vahnxu/x-spam-blocker
-// @version      0.6.4
+// @version      0.6.5
 // @description  本地实时识别 X 上的中文色情/引流/搭讪垃圾号。不靠敏感词黑名单（那是军备竞赛），改为综合判据：自动生成 handle 形态 + 随机 emoji 沙拉 + 孤独搭讪语义 + 引流链接。浏览器本地跑，像广告拦截器一样轻。
 // @author       vahnxu
 // @match        https://x.com/*
@@ -19,7 +19,7 @@
 
   // 模式：'mark' = 只标红 + 「屏蔽」按钮，你点了才屏蔽（默认，最安全）
   //       'auto' = 自动屏蔽命中的号（看顺眼了再改）
-  const VERSION = '0.6.4';
+  const VERSION = '0.6.5';
   const MODE = 'mark';
 
   // 命中总分达到这个阈值才算垃圾号（调高更保守、更不易误伤）
@@ -73,6 +73,8 @@
   const BEARER = 'Bearer AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA';
 
   const autoQueuedHandles = new Set();
+  const blockedHandles = new Set();
+  const flaggedOriginalHandleByKey = new Map();
   const flaggedCellsByHandle = new Map();
   let blockedCount = 0, autoBlockedThisSession = 0;
   const autoQueue = []; let autoBusy = false;
@@ -213,10 +215,21 @@
     });
   }
 
+  function enqueueBlock(handle, cell) {
+    const key = handle.toLowerCase();
+    if (blockedHandles.has(key) || autoQueuedHandles.has(key)) return false;
+    autoQueuedHandles.add(key);
+    autoQueue.push({ handle, cell });
+    return true;
+  }
+
   function rememberFlaggedCell(handle, cell) {
     const key = handle.toLowerCase();
+    flaggedOriginalHandleByKey.set(key, handle);
     if (!flaggedCellsByHandle.has(key) && flaggedCellsByHandle.size >= MAX_TRACKED_HANDLES) {
-      flaggedCellsByHandle.delete(flaggedCellsByHandle.keys().next().value);
+      const oldest = flaggedCellsByHandle.keys().next().value;
+      flaggedCellsByHandle.delete(oldest);
+      flaggedOriginalHandleByKey.delete(oldest);
     }
     if (!flaggedCellsByHandle.has(key)) flaggedCellsByHandle.set(key, new Set());
     const cells = flaggedCellsByHandle.get(key);
@@ -226,8 +239,10 @@
 
   function markHandleBlocked(handle, fallbackCell) {
     const key = handle.toLowerCase();
+    blockedHandles.add(key);
     const cells = flaggedCellsByHandle.get(key) || new Set([fallbackCell]);
     cells.forEach((cell) => { if (cell && cell.isConnected !== false) markCellBlocked(cell, handle); });
+    updatePanel();
   }
 
   function markCellSpam(cell, handle, reasons) {
@@ -250,6 +265,7 @@
       if (ok) markHandleBlocked(handle, cell); else btn.textContent = '失败';
     });
     cell.appendChild(badge); cell.appendChild(btn);
+    updatePanel();
   }
 
   function markCellBlocked(cell, handle) {
@@ -279,10 +295,36 @@
     rememberFlaggedCell(handle, cell);
     markCellSpam(cell, handle, reasons);
     if (MODE === 'auto' && !autoQueuedHandles.has(key)) {
-      autoQueuedHandles.add(key);
-      autoQueue.push({ handle, cell });
+      enqueueBlock(handle, cell);
       pumpAutoQueue();
     }
+  }
+
+  function visibleFlaggedHandles() {
+    const handles = [];
+    flaggedCellsByHandle.forEach((cells, key) => {
+      if (blockedHandles.has(key) || autoQueuedHandles.has(key)) return;
+      let visible = false;
+      cells.forEach((cell) => {
+        if (!cell || cell.isConnected === false) cells.delete(cell);
+        else if (cell.dataset && cell.dataset.xspam === '1') visible = true;
+      });
+      if (visible) handles.push({ key, handle: flaggedOriginalHandleByKey.get(key) || key, cell: cells.values().next().value });
+    });
+    return handles;
+  }
+
+  function blockMarkedVisible(btn) {
+    const handles = visibleFlaggedHandles();
+    if (!handles.length) { updatePanel(); return; }
+    let queued = 0;
+    handles.forEach(({ handle, cell }) => { if (enqueueBlock(handle, cell)) queued++; });
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = '已加入队列 ' + queued + ' 个';
+    }
+    updatePanel();
+    pumpAutoQueue();
   }
 
   const CELL_SEL = 'article[data-testid="tweet"], [data-testid="UserCell"], [data-testid="cellInnerDiv"]';
@@ -301,7 +343,17 @@
   }
 
   let panel;
-  function updatePanel() { if (panel) panel.querySelector('.xspam-count').textContent = blockedCount; }
+  function updatePanel() {
+    if (!panel) return;
+    const count = panel.querySelector('.xspam-count');
+    if (count) count.textContent = blockedCount;
+    const batch = panel.querySelector('#xspam-block-marked');
+    if (batch) {
+      const n = visibleFlaggedHandles().length;
+      batch.textContent = '屏蔽本页疑似(' + n + ')';
+      batch.disabled = n === 0;
+    }
+  }
   function buildPanel() {
     const existing = document.getElementById('xspam-panel');
     if (existing) { panel = existing; return; }
@@ -309,6 +361,17 @@
     panel.id = 'xspam-panel';
     panel.style.cssText = 'position:fixed;bottom:16px;right:16px;z-index:99999;background:#000;color:#fff;border:1px solid #2f3336;border-radius:12px;padding:8px 12px;font-size:12px;font-family:system-ui;box-shadow:0 2px 12px rgba(0,0,0,.4);';
     panel.innerHTML = '🛡 已屏蔽 <b class="xspam-count">0</b> · 模式:' + (MODE === 'auto' ? '自动' : '手动');
+    const batchBtn = document.createElement('button');
+    batchBtn.id = 'xspam-block-marked';
+    batchBtn.textContent = '屏蔽本页疑似(0)';
+    batchBtn.title = '只屏蔽当前页面已经被标记为疑似垃圾的账号；不处理未命中的普通账号。';
+    batchBtn.style.cssText = 'display:block;margin-top:6px;background:#e0245e;color:#fff;border:none;font-size:12px;padding:4px 10px;border-radius:14px;cursor:pointer;font-weight:700;';
+    batchBtn.addEventListener('click', (ev) => {
+      ev.preventDefault(); ev.stopPropagation();
+      blockMarkedVisible(batchBtn);
+    });
+    panel.appendChild(batchBtn);
+    updatePanel();
     document.body.appendChild(panel);
   }
 

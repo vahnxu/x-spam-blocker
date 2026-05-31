@@ -30,21 +30,23 @@
 ## 2026-05-31 live-X follow-up
 
 - `x-spam-blocker.user.js`
-  - Bumped userscript version through `0.6.4`.
+  - Bumped userscript version through `0.6.5`.
   - Added city-matrix and contact-cue scoring for Chinese batch spam that does not use auto-generated handles.
   - Expanded city coverage with live X samples from second/lower-tier city burst posts.
   - Skipped nested candidate cells when an outer tweet/user cell is already the scoring surface, preventing duplicate badge/button overlays.
   - Added short mention-referral scoring for reply spam such as `主页能打`, `她太涩/顶不住`, `体制内老师/已探路/花样多`, and `专业牵线/1-5线覆盖/看主页`.
+  - Added right-panel batch action `屏蔽本页疑似(n)`, which blocks only currently marked spam handles and deduplicates repeated visible cards.
 - `test/run-regression.js`
   - Added regressions for:
     - city-burst + `点击即可联系` spam with a non-auto-looking handle;
     - lower-tier city-burst spam with obfuscated escort wording;
     - short @mention referral replies while preserving ordinary mentions;
+    - one-click batch blocking of marked visible handles with handle-level dedupe;
     - X `article` / `cellInnerDiv` nesting where only one visible marker should be injected.
 - `package.json`
-  - Bumped package version to `0.6.4`.
+  - Bumped package version to `0.6.5`.
 - `README.md`
-  - Added the new city-matrix/contact-cue, short mention-referral, and nested-card hardening points.
+  - Added the new city-matrix/contact-cue, short mention-referral, batch-block, and nested-card hardening points.
 
 ## Commands and key outputs
 
@@ -57,7 +59,7 @@
 - `npm test` after implementation:
   - `6/6 tests passed`.
 - `npm test` after live-X follow-up:
-  - `10/10 tests passed`.
+  - `11/11 tests passed`.
 - `node --check x-spam-blocker.user.js`:
   - PASS, no syntax errors.
 - `git diff --check`:
@@ -65,14 +67,16 @@
 - Real Chrome / X validation:
   - First attempt accidentally hit `Chrome-Debug` (`--user-data-dir=.../Chrome-Debug`) and X login onboarding; treated as failed validation, no login attempted.
   - Corrected to the user's normal Chrome `Default` profile through the Codex Chrome Extension.
-  - Tampermonkey script storage readback showed `sourceVersion=0.6.4` and `metaVersion=0.6.4`.
+  - Tampermonkey script storage readback showed `sourceVersion=0.6.4` and `metaVersion=0.6.4` for mention-referral validation; later `sourceVersion=0.6.5` and `metaVersion=0.6.5` for the batch-button follow-up.
   - Live X search for `约炮`: `v0.6.3` startup logs present, panel present, 5 visible articles, 4 marked nodes, duplicate badge articles = 0.
   - Live X search for `主页能打`: `v0.6.4` startup logs present, panel present, 19 visible articles, 14 marked nodes, duplicate badge articles = 0.
   - Live X search for `她太涩 顶不住`: 22 visible articles, 22 marked nodes, duplicate badge articles = 0.
   - Live X search for `体制内老师 已探路 花样多`: 22 visible articles, 22 marked nodes, duplicate badge articles = 0.
+  - Live X search for `主页能打` after `0.6.5`: `v0.6.5` startup logs present, panel present, batch button present, button text `屏蔽本页疑似(9)`, duplicate badge articles = 0. The button was not clicked on the live account.
   - Screenshot evidence: `/Users/haitaoxu/Documents/Codex/2026-05-31/repo-harness-claude-code-x/outputs/x-real-chrome-v063-final.png`.
   - Screenshot evidence: `/Users/haitaoxu/Documents/Codex/2026-05-31/repo-harness-claude-code-x/outputs/x-real-chrome-v064-mention-referral.png`.
   - Screenshot evidence: `/Users/haitaoxu/Documents/Codex/2026-05-31/repo-harness-claude-code-x/outputs/x-real-chrome-v064-mention-variants.png`.
+  - Screenshot evidence: `/Users/haitaoxu/Documents/Codex/2026-05-31/repo-harness-claude-code-x/outputs/x-real-chrome-v065-batch-button.png`.
 
 ## Validation checkpoints
 
@@ -83,8 +87,9 @@
 - PASS: Blocked-list collector injection is covered by a regression test.
 - PASS: City-matrix/contact-cue spam without auto-generated handle shape is covered by regression tests.
 - PASS: Short @mention referral spam is covered by regression tests and live X readback.
+- PASS: Batch-block button behavior is covered by regression harness with mocked X block calls; live X verified the button and count, but it was not clicked to avoid unrequested real block-list changes.
 - PASS: X nested card DOM does not create duplicate visible markers.
-- PASS: Real logged-in normal Chrome profile shows `v0.6.4` running on X with visible red marker and manual block button.
+- PASS: Real logged-in normal Chrome profile shows `v0.6.4` running on X with visible red marker and manual block button; `v0.6.5` adds the batch button.
 
 ## Not verified
 

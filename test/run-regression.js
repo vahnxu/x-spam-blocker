@@ -94,7 +94,7 @@ class FakeElement {
     if (selector === 'a[role="link"][href^="/"]') {
       return this.tagName === 'A' && this.getAttribute('role') === 'link' && (this.getAttribute('href') || '').startsWith('/');
     }
-    if (selector === '#xspam-collector') return this.id === 'xspam-collector';
+    if (selector.startsWith('#')) return this.id === selector.slice(1);
     if (selector === '.xspam-blocked-tag') return this.className.split(/\s+/).includes('xspam-blocked-tag');
     return false;
   }
@@ -147,6 +147,7 @@ class FakeDocument {
   constructor(pathname = '/home') {
     this.nodeType = 9;
     this.location = { pathname };
+    this.cookie = 'ct0=test-csrf';
     this.defaultView = {
       getComputedStyle(node) {
         if (node.tagName === 'ARTICLE' || node.tagName === 'DIV') return { display: 'block' };
@@ -226,6 +227,7 @@ function addTweetText(doc, cell, text) {
 function runUserscript(doc) {
   const logs = [];
   const warnings = [];
+  const fetches = [];
   const observers = [];
   const context = {
     document: doc,
@@ -258,7 +260,10 @@ function runUserscript(doc) {
       createObjectURL: () => 'blob:test',
       revokeObjectURL() {},
     },
-    fetch: async () => ({ ok: true, status: 200 }),
+    fetch: async (url, init = {}) => {
+      fetches.push({ url, init });
+      return { ok: true, status: 200 };
+    },
   };
   context.window.setTimeout = context.setTimeout;
   context.window.clearTimeout = context.clearTimeout;
@@ -272,6 +277,7 @@ function runUserscript(doc) {
   return {
     logs,
     warnings,
+    fetches,
     triggerMutation() {
       observers.forEach((callback) => callback([]));
     },
@@ -399,6 +405,46 @@ test('marks every visible duplicate occurrence of the same spam handle', () => {
 
   assert.equal(isMarked(first), true);
   assert.equal(isMarked(second), true);
+});
+
+test('batch button blocks every marked visible handle once', async () => {
+  const doc = new FakeDocument('/home');
+  const first = makeTweetCell(doc, {
+    name: '短评引流一',
+    handle: 'spam_referral_1',
+    text: '她太涩了v 我真顶不住 @kikicez 2j',
+  });
+  const duplicate = makeTweetCell(doc, {
+    name: '短评引流一',
+    handle: 'spam_referral_1',
+    text: '她太涩了v 我真顶不住 @kikicez 2j',
+  });
+  const second = makeTweetCell(doc, {
+    name: '短评引流二',
+    handle: 'spam_referral_2',
+    text: '刷了半天的X s就她主页能打✈️了 @yuyuvcr 1e',
+  });
+  const human = makeTweetCell(doc, {
+    name: 'Normal Reply',
+    handle: 'normalreply',
+    text: '刷了半天的 X，终于找到 @grok 的正确用法了',
+  });
+  [first, duplicate, second, human].forEach((cell) => doc.body.appendChild(cell));
+  const harness = runUserscript(doc);
+  const button = doc.getElementById('xspam-block-marked');
+
+  assert.ok(button, 'batch block button should exist');
+  assert.match(button.textContent, /屏蔽本页疑似\(2\)/);
+
+  button.listeners.click({ preventDefault() {}, stopPropagation() {} });
+  for (let i = 0; i < 8; i++) await Promise.resolve();
+
+  const bodies = harness.fetches.map((item) => String(item.init.body));
+  assert.equal(bodies.length, 2);
+  assert.deepEqual(
+    bodies.map((body) => decodeURIComponent(body.match(/screen_name=([^&]+)/)[1])).sort(),
+    ['spam_referral_1', 'spam_referral_2']
+  );
 });
 
 test('marks only the outer tweet cell when X nests cellInnerDiv inside article', () => {
