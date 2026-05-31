@@ -24,7 +24,7 @@
 ## 安装（约 30 秒）
 
 1. 给浏览器装一次 [Tampermonkey](https://www.tampermonkey.net/)（Chrome / Edge / Firefox / Safari 均可）。
-2. 打开 `x-spam-blocker.user.js`，Tampermonkey 会弹出安装框 → 点「安装」。
+2. 打开 [安装脚本](https://github.com/vahnxu/x-spam-blocker/raw/main/x-spam-blocker.user.js)，Tampermonkey 会弹出安装框 → 点「安装」。
 3. 打开 x.com 正常刷即可。命中的垃圾号会被标红，并出现「屏蔽」按钮。
 
 ## 两种模式
