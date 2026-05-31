@@ -347,6 +347,39 @@ test('marks lower-tier city-burst spam with obfuscated escort wording', () => {
   assert.equal(isMarked(spam), true);
 });
 
+test('marks short mention-referral spam replies while preserving ordinary mentions', () => {
+  const doc = new FakeDocument('/home');
+  const samples = [
+    makeTweetCell(doc, {
+      name: 'mauro',
+      handle: 'maurobrunov',
+      text: '她太涩了v 我真顶不住 @kikicez 2j',
+    }),
+    makeTweetCell(doc, {
+      name: 'Eli R.',
+      handle: 'ElibethRC',
+      text: '刷了半天的X s就她主页能打✈️了 @yuyuvcr 1e',
+    }),
+    makeTweetCell(doc, {
+      name: 'Michelle',
+      handle: 'teachvolleyball',
+      text: '30+的n 体制内老师 已探路花样多 @riley_bark46966 1n',
+    }),
+  ];
+  const human = makeTweetCell(doc, {
+    name: 'Normal Reply',
+    handle: 'normalreply',
+    text: '刷了半天的 X，终于找到 @grok 的正确用法了',
+  });
+  samples.forEach((cell) => doc.body.appendChild(cell));
+  doc.body.appendChild(human);
+
+  runUserscript(doc);
+
+  samples.forEach((cell) => assert.equal(isMarked(cell), true));
+  assert.equal(isMarked(human), false);
+});
+
 test('marks every visible duplicate occurrence of the same spam handle', () => {
   const doc = new FakeDocument('/home');
   const first = makeTweetCell(doc, {
