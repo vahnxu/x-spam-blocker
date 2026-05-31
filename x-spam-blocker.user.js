@@ -70,6 +70,8 @@
   // ② 逻辑（普通用户不用动）
   // ============================================================
 
+  // X web app public bearer token, not a user secret. Blocking still requires
+  // the current user's browser cookie (`ct0`) and runs only inside x.com/twitter.com.
   const BEARER = 'Bearer AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA';
 
   const autoQueuedHandles = new Set();
