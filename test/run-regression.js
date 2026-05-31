@@ -224,11 +224,12 @@ function addTweetText(doc, cell, text) {
   cell.appendChild(textEl);
 }
 
-function runUserscript(doc) {
+function runUserscript(doc, options = {}) {
   const logs = [];
   const warnings = [];
   const fetches = [];
   const observers = [];
+  const confirms = [];
   const context = {
     document: doc,
     location: doc.location,
@@ -240,6 +241,10 @@ function runUserscript(doc) {
     console: {
       log: (...args) => logs.push(args.join(' ')),
       warn: (...args) => warnings.push(args.join(' ')),
+    },
+    confirm: (message) => {
+      confirms.push(String(message));
+      return options.confirmReturn !== false;
     },
     setTimeout: (fn) => {
       fn();
@@ -271,6 +276,7 @@ function runUserscript(doc) {
   context.window.Blob = context.Blob;
   context.window.URL = context.URL;
   context.window.fetch = context.fetch;
+  context.window.confirm = context.confirm;
 
   vm.runInNewContext(USERSCRIPT_SOURCE, context, { filename: USERSCRIPT_PATH });
 
@@ -278,6 +284,7 @@ function runUserscript(doc) {
     logs,
     warnings,
     fetches,
+    confirms,
     triggerMutation() {
       observers.forEach((callback) => callback([]));
     },
@@ -371,6 +378,16 @@ test('marks short mention-referral spam replies while preserving ordinary mentio
       handle: 'teachvolleyball',
       text: '30+的n 体制内老师 已探路花样多 @riley_bark46966 1n',
     }),
+    makeTweetCell(doc, {
+      name: 'ESSOLA ETOA LOUIS Childéric',
+      handle: 'EtoaEssola',
+      text: 'sao货d 没人比她sao ❣️ @mengyyw 7s',
+    }),
+    makeTweetCell(doc, {
+      name: 'Ceyda Mendes',
+      handle: 'OneirophobiaC',
+      text: '线下sao货没人比她sao @irmkrdn ^lt',
+    }),
   ];
   const human = makeTweetCell(doc, {
     name: 'Normal Reply',
@@ -445,6 +462,29 @@ test('batch button blocks every marked visible handle once', async () => {
     bodies.map((body) => decodeURIComponent(body.match(/screen_name=([^&]+)/)[1])).sort(),
     ['spam_referral_1', 'spam_referral_2']
   );
+});
+
+test('batch button requires confirmation and queues at most the conservative per-click cap', async () => {
+  const doc = new FakeDocument('/home');
+  for (let i = 0; i < 30; i++) {
+    doc.body.appendChild(makeTweetCell(doc, {
+      name: '短评引流' + i,
+      handle: 'spam_referral_' + i,
+      text: '她太涩了v 我真顶不住 @kikicez ' + i + 'j',
+    }));
+  }
+  const harness = runUserscript(doc);
+  const button = doc.getElementById('xspam-block-marked');
+
+  assert.ok(button, 'batch block button should exist');
+  assert.match(button.textContent, /屏蔽本页疑似\(30\)/);
+
+  button.listeners.click({ preventDefault() {}, stopPropagation() {} });
+  for (let i = 0; i < 160; i++) await Promise.resolve();
+
+  assert.equal(harness.confirms.length, 1);
+  assert.match(harness.confirms[0], /最多先处理 25 个/);
+  assert.equal(harness.fetches.length, 25);
 });
 
 test('marks only the outer tweet cell when X nests cellInnerDiv inside article', () => {

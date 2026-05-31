@@ -1,6 +1,6 @@
 {
   "name": "x-spam-blocker",
-  "version": "0.6.5",
+  "version": "0.6.6",
   "private": false,
   "type": "commonjs",
   "scripts": {
