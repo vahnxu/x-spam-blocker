@@ -1,0 +1,9 @@
+{
+  "name": "x-spam-blocker",
+  "version": "0.6.0",
+  "private": false,
+  "type": "commonjs",
+  "scripts": {
+    "test": "node test/run-regression.js"
+  }
+}
