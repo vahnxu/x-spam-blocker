@@ -1,6 +1,6 @@
 # X 中文垃圾号识别 / 一键屏蔽
 
-一个轻量的浏览器用户脚本（Tampermonkey），自动识别并屏蔽 X（Twitter）上泛滥的**中文色情 / 引流垃圾号**——就是那些 `同城上门`、`寻固炮`、`点击主页`、`t.me/xxx 加我` 之类的回复机器人。
+一个轻量的浏览器用户脚本（Tampermonkey），自动识别并屏蔽 X（Twitter）上泛滥的**中文色情 / 引流垃圾号**——就是那些 `万达广场`、`蹲个弟弟`、`同城上门`、`点击主页`、`t.me/xxx 加我` 之类的回复机器人。
 
 ## 它和老式"屏蔽名单"插件有什么不同
 
@@ -23,9 +23,9 @@
 
 ## 安装（约 30 秒）
 
-1. 给浏览器装一次 [Tampermonkey](https://www.tampermonkey.net/)（Chrome / Edge / Firefox / Safari 均可）。
-2. 打开 [安装脚本](https://github.com/vahnxu/x-spam-blocker/raw/main/x-spam-blocker.user.js)，Tampermonkey 会弹出安装框 → 点「安装」。
-3. 打开 x.com 正常刷即可。命中的垃圾号会被标红，并出现「屏蔽」按钮。
+1. Chrome 用户先安装 [Tampermonkey 扩展](https://chromewebstore.google.com/detail/tampermonkey/dhdgffkkebhmkfjojejmpbldmpobfkfo)。其他桌面浏览器可从 [Tampermonkey 官网](https://www.tampermonkey.net/)安装对应版本。
+2. 打开 [安装脚本](https://github.com/vahnxu/x-spam-blocker/raw/main/x-spam-blocker.user.js)，Tampermonkey 会弹出安装/更新页面，点「安装」或「更新」。
+3. 打开或刷新 x.com。疑似垃圾号会被红框标出；可以逐条点「屏蔽」，也可以点右下角「屏蔽本页疑似账号」。
 
 ## 两种模式
 
