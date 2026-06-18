@@ -27,6 +27,9 @@
 2. 打开 [安装脚本](https://github.com/vahnxu/x-spam-blocker/raw/main/x-spam-blocker.user.js)，Tampermonkey 会弹出安装/更新页面，点「安装」或「更新」。
 3. 打开或刷新 x.com。疑似垃圾号会被红框标出；可以逐条点「屏蔽」，也可以点右下角「屏蔽本页疑似账号」（会先确认，并分批慢速执行）。
 
+> **关于自动更新**：脚本头里带了 `@updateURL` / `@downloadURL`，Tampermonkey 会**定期（默认每天）**回 GitHub 检查版本号，有新版会弹更新提示。
+> ⚠️ 前提是你**从上面第 2 步的链接安装**（"从 URL 安装"）。如果你是把 `.user.js` 文件**下载下来再拖进 Tampermonkey**（本地文件安装），Tampermonkey 没有更新来源，**永远不会提示更新**——这种情况按第 2 步的链接**重新安装一次**即可切回可自动更新；也可在 Tampermonkey 面板手动点「检查用户脚本更新」立即检查。
+
 ## 两种模式
 
 打开脚本顶部，改 `MODE`：

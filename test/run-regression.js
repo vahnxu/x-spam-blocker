@@ -531,6 +531,32 @@ test('injects the blocked-account collector on X blocked settings pages', () => 
   assert.equal(collector.textContent, '📥 采集已屏蔽账号 → JSON');
 });
 
+test('promoted sao escort words mark no-mention spam when a second signal corroborates', () => {
+  const doc = new FakeDocument('/home');
+  // 无 @提及，但 sao货(+explicit 4) + 自动生成 handle 形态(+3) = 7 >= 阈值 → 命中
+  const spam = makeTweetCell(doc, {
+    name: 'Evelyn',
+    handle: 'evelyn_vau7909',
+    text: 'sao货ud没人比她sao❣️ 5d',
+  });
+  doc.body.appendChild(spam);
+  runUserscript(doc);
+  assert.equal(isMarked(spam), true);
+});
+
+test('a lone no-mention sao word stays unmarked (conservative: +explicit alone is below threshold)', () => {
+  const doc = new FakeDocument('/home');
+  // 只有 sao货(+4)，无 @提及、无第二旁证 → 低于阈值，不误伤吐槽垃圾号的真人
+  const lone = makeTweetCell(doc, {
+    name: 'Larissa Alencar',
+    handle: 'LaAlencar',
+    text: '又是 sao货 引流的，烦死了',
+  });
+  doc.body.appendChild(lone);
+  runUserscript(doc);
+  assert.equal(isMarked(lone), false);
+});
+
 (async () => {
   let failed = 0;
   for (const { name, fn } of tests) {

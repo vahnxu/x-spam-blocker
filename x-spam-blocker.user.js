@@ -1,9 +1,13 @@
 // ==UserScript==
 // @name         X 中文垃圾号识别 / 一键屏蔽 (形态+行为+语义)
 // @namespace    https://github.com/vahnxu/x-spam-blocker
-// @version      0.6.6
+// @version      0.6.7
 // @description  本地实时识别 X 上的中文色情/引流/搭讪垃圾号。不靠敏感词黑名单（那是军备竞赛），改为综合判据：自动生成 handle 形态 + 随机 emoji 沙拉 + 孤独搭讪语义 + 引流链接。浏览器本地跑，像广告拦截器一样轻。
 // @author       vahnxu
+// @homepageURL  https://github.com/vahnxu/x-spam-blocker
+// @supportURL   https://github.com/vahnxu/x-spam-blocker/issues
+// @updateURL    https://raw.githubusercontent.com/vahnxu/x-spam-blocker/main/x-spam-blocker.user.js
+// @downloadURL  https://raw.githubusercontent.com/vahnxu/x-spam-blocker/main/x-spam-blocker.user.js
 // @match        https://x.com/*
 // @match        https://twitter.com/*
 // @run-at       document-idle
@@ -19,7 +23,7 @@
 
   // 模式：'mark' = 只标红 + 「屏蔽」按钮，你点了才屏蔽（默认，最安全）
   //       'auto' = 自动屏蔽命中的号（看顺眼了再改）
-  const VERSION = '0.6.6';
+  const VERSION = '0.6.7';
   const MODE = 'mark';
 
   // 命中总分达到这个阈值才算垃圾号（调高更保守、更不易误伤）
@@ -47,7 +51,10 @@
   };
 
   // 露骨词（出现在名字或正文，命中 +explicit）
-  const EXPLICIT = ['同城上门','上门服务','寻固炮','点击主页','点我主页','日泡平台','真人认证','秒约','可约','空降','外围','楼凤','裸聊','福利姬','涩涩','约炮','约啪','上门约','同城约','加我微信','资源群','线下真实','一对一裸'];
+  // 末尾几个 sao 系是色情引流号专有词（"sao货 / 线下sao"），普通人极少这样写。
+  // 它们同时也在 REFERRAL_CUES 里（短评@导流路径）；放进 EXPLICIT 是为了让"无 @提及"的 sao 帖
+  // 也能拿到 +explicit 分（仍低于阈值，需一个旁证才命中，保持保守、不误伤吐槽垃圾号的真人）。
+  const EXPLICIT = ['同城上门','上门服务','寻固炮','点击主页','点我主页','日泡平台','真人认证','秒约','可约','空降','外围','楼凤','裸聊','福利姬','涩涩','约炮','约啪','上门约','同城约','加我微信','资源群','线下真实','一对一裸','sao货','sao貨','线下sao','线下骚'];
   // 名字软 token（搭讪/暗示，+nameSoft）
   const NAME_SOFT = ['涩','馋','约见','真实约见','身子','线上','指挥','寻欢','哥哥我要','调教','喂养','榨','骚'];
   // 孤独/搭讪语义短语（不是露骨词，关键词抓不全，这里只列高区分度的，+bait）
