@@ -1,0 +1,16 @@
+schema_version: 1
+
+
+project: x-spam-blocker
+type: minimal
+github: local-only
+checks:
+  onboarding_gate: false          
+  governance_consistency: false   
+  autosync_governance: false      
+  deploy_runbook: false           
+  acceptance_smoke: false         
+governance_scripts: []            
+sync:
+  truth_source: local
+  autosync: true                  
