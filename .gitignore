@@ -4,3 +4,9 @@ node_modules/
 docs/workspace/logs/
 work/
 outputs/
+
+# 🔴 刻意不跟踪：本仓 governance.yaml truth_source=github，GitHub main 即安装源与自动
+# 更新源，推 main 直达真实用户；AGENTS.md 含内部治理路径与生意运营细节，不得进公开仓
+# 同步/校验两侧已把本仓登记进 allowed_missing_agents 豁免。
+AGENTS.md
+GEMINI.md
