@@ -913,7 +913,7 @@ test('settings persist across restarts and invalid values fall back to defaults'
   const harness2 = runUserscript(doc2, { storage: broken });
   const line2 = harness2.logs.find((l) => l.includes('[x-spam]'));
   assert.match(line2, /模式=手动/);
-  assert.match(line2, /动作=静音/);
+  assert.match(line2, /动作=屏蔽/);
   assert.match(line2, /阈值=5/);
 });
 
@@ -926,7 +926,7 @@ test('a throwing localStorage degrades to in-memory defaults instead of crashing
   assert.match(noticeEl.textContent, /本地存储不可用/);
 });
 
-test('the default action targets the mute endpoint, not the block endpoint', async () => {
+test('the default action targets the block endpoint, not the mute endpoint', async () => {
   const doc = new FakeDocument('/home');
   const spam = makeTweetCell(doc, {
     name: '短评引流一', handle: 'spam_referral_1', text: '她太涩了v 我真顶不住 @kikicez 2j',
@@ -938,7 +938,7 @@ test('the default action targets the mute endpoint, not the block endpoint', asy
   await drain();
 
   assert.equal(harness.fetches.length, 1);
-  assert.match(harness.fetches[0].url, /\/i\/api\/1\.1\/mutes\/users\/create\.json$/);
+  assert.match(harness.fetches[0].url, /\/i\/api\/1\.1\/blocks\/create\.json$/);
 });
 
 test('ledger goes intent -> ok, keeps id_str, and undo calls the matching destroy endpoint', async () => {
@@ -960,7 +960,7 @@ test('ledger goes intent -> ok, keeps id_str, and undo calls the matching destro
   let entries = storage.read('xspam.ledger.v1');
   assert.equal(entries.length, 1);
   assert.equal(entries[0].status, 'intent');
-  assert.equal(entries[0].action, 'mute');
+  assert.equal(entries[0].action, 'block');
   assert.equal(entries[0].handle, 'spam_referral_1');
 
   await drain();
@@ -972,7 +972,7 @@ test('ledger goes intent -> ok, keeps id_str, and undo calls the matching destro
   await drain();
 
   assert.equal(harness.fetches.length, 2);
-  assert.match(harness.fetches[1].url, /\/i\/api\/1\.1\/mutes\/users\/destroy\.json$/);
+  assert.match(harness.fetches[1].url, /\/i\/api\/1\.1\/blocks\/destroy\.json$/);
   // 用 user_id 而不是 screen_name：这个人可能已经改名，改了名 screen_name 就指向别人了
   assert.match(String(harness.fetches[1].init.body), /user_id=90210/);
   assert.doesNotMatch(String(harness.fetches[1].init.body), /screen_name=/);
@@ -1109,13 +1109,13 @@ test('settings saved through the panel controls survive a restart', () => {
   const doc = new FakeDocument('/home');
   runUserscript(doc, { storage });
   clickEl(doc.getElementById('xspam-mode'));      // 手动 -> 自动
-  clickEl(doc.getElementById('xspam-action'));    // 静音 -> 屏蔽
+  clickEl(doc.getElementById('xspam-action'));    // 屏蔽 -> 静音
 
   const doc2 = new FakeDocument('/home');
   const harness2 = runUserscript(doc2, { storage });
   const line = harness2.logs.find((l) => l.includes('[x-spam]'));
   assert.match(line, /模式=自动/);
-  assert.match(line, /动作=屏蔽/);
+  assert.match(line, /动作=静音/);
 });
 
 test('the attempt cap is enforced at dispatch, not just at enqueue', async () => {
@@ -1182,13 +1182,13 @@ test('a card button keeps the action it was rendered with, and idle buttons re-r
   doc.body.appendChild(b);
   const harness = runUserscript(doc, { manualClock: true, storage });
 
-  assert.equal(actionButton(a).textContent, '静音');
-  clickEl(actionButton(a));                       // 以「静音」入队，此刻还发不出去
+  assert.equal(actionButton(a).textContent, '屏蔽');
+  clickEl(actionButton(a));                       // 以「屏蔽」入队，此刻还发不出去
   await drain();
   assert.equal(harness.fetches.length, 0);
 
-  clickEl(doc.getElementById('xspam-action'));    // 面板切成「屏蔽」
-  assert.equal(actionButton(b).textContent, '屏蔽', 'idle buttons follow the panel');
+  clickEl(doc.getElementById('xspam-action'));    // 面板切成「静音」
+  assert.equal(actionButton(b).textContent, '静音', 'idle buttons follow the panel');
   assert.equal(actionButton(a).textContent, '已排队…', 'a queued button is not relabelled');
 
   // 重新渲染过的按钮，点下去必须真的执行它此刻写着的那个动作
@@ -1196,8 +1196,8 @@ test('a card button keeps the action it was rendered with, and idle buttons re-r
   await settle(harness);
 
   assert.equal(harness.fetches.length, 2);
-  assert.match(harness.fetches[0].url, /mutes\/users\/create\.json$/, 'A must use the action bound at click time');
-  assert.match(harness.fetches[1].url, /blocks\/create\.json$/, 'B must do what its label now says');
+  assert.match(harness.fetches[0].url, /blocks\/create\.json$/, 'A must use the action bound at click time');
+  assert.match(harness.fetches[1].url, /mutes\/users\/create\.json$/, 'B must do what its label now says');
 });
 
 test('cancelling an unsent undo leaves the original ok entry intact', async () => {

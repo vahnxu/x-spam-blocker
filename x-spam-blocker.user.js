@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         X 中文垃圾号识别 / 一键静音·屏蔽 (形态+行为+语义+模板聚类)
 // @namespace    https://github.com/vahnxu/x-spam-blocker
-// @version      0.7.0
+// @version      0.7.1
 // @description  本地实时识别 X 上的中文色情/引流/搭讪垃圾号。不靠敏感词黑名单（那是军备竞赛），改为综合判据：自动生成 handle 形态 + 随机 emoji 沙拉 + 孤独搭讪语义 + 引流链接 + 「一批号说同一句话」的模板聚类。动作可选静音/屏蔽，带账本与撤销。浏览器本地跑，像广告拦截器一样轻。
 // @author       vahnxu
 // @homepageURL  https://github.com/vahnxu/x-spam-blocker
@@ -25,15 +25,15 @@
   // 并且会存在浏览器本地（localStorage）里，脚本自动更新不会把你的选择冲掉。
   // 下面这些常量只是「你从来没点过面板时的出厂默认值」。
 
-  const VERSION = '0.7.0';
+  const VERSION = '0.7.1';
 
   // 模式：'mark' = 只标红 + 按钮，你点了才动手（默认，最安全）
   //       'auto' = 自动处理命中的号（看顺眼了再在面板上切）
   const DEFAULT_MODE = 'mark';
 
-  // 动作：'mute' = 静音（默认，轻，且随时可撤销，手机端评论区同样看不到）
-  //       'block' = 屏蔽（重，会断掉互相关注关系，解除后不自动恢复）
-  const DEFAULT_ACTION = 'mute';
+  // 动作：'block' = 屏蔽（默认——owner 一直这么用，效果在手机端亲眼验证过；会断掉互相关注关系，解除后不自动恢复）
+  //       'mute'  = 静音（轻、可撤销、不断关注关系；对未关注账号的回复在会话里是否隐藏只见于 X 文档，未实测）
+  const DEFAULT_ACTION = 'block';
 
   // 命中总分达到这个阈值才算垃圾号（调高更保守、更不易误伤）
   const DEFAULT_THRESHOLD = 5;
