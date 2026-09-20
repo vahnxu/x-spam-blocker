@@ -7,9 +7,6 @@ outputs/
 
 # 🔴 刻意不跟踪：本仓 governance.yaml truth_source=github，GitHub main 即安装源与自动
 # 更新源，推 main 直达真实用户；AGENTS.md 含内部治理路径与生意运营细节，不得进公开仓
-# ⚠️ 原文此处曾写「本仓已跟踪的 CLAUDE.md（896B 薄指针）才是正确形态」——
-#    该句已被下面 2026-09-20 的拍板取代，保留这行只为说明它为什么不再成立：
-#    现在三份指令文件都不入库，没有哪一份是「已跟踪的正确形态」。
 # 同步/校验两侧已把本仓登记进 public-exempt 豁免。
 # 于是三份指令文件一律不入库：本地形态与其它仓相同（AGENTS.md 全文 + CLAUDE.md 单行
 # `@AGENTS.md` 加载器），只是不被 git 跟踪，GitHub 上不再有它们。
